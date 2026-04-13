@@ -70,7 +70,7 @@ async def receive_scan(item: ScanItem):
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM product_master WHERE product_id = %s", (product_id,))
+        cur.execute("SELECT * FROM product_master WHERE barcde = %s", (product_id,))
         prod_data = cur.fetchone()
         
         if not prod_data:
