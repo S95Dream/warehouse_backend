@@ -9,7 +9,7 @@ from datetime import datetime
 app = FastAPI()
 
 # 資料庫連結
-DATABASE_URL = "postgresql://admin:z4b7Wc7ydu1AilkOkjFkLEJKJH6HNfQP@dpg-cv66o1ogph6c738jcgig-a.singapore-postgres.render.com/warehouse_db_65f0?sslmode=require"
+DATABASE_URL = "postgresql://admin:z4b7Wc7ydu1AilkOkjFkLEJKJH6HNfQP@dpg-d7abkoua2pns73abkgn0-a.singapore-postgres.render.com/warehouse_db_jygk?sslmode=require"
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
