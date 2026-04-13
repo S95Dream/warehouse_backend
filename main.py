@@ -70,6 +70,8 @@ async def receive_scan(item: ScanItem):
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. 修正 SQL 語法：barcode 拼字要正確
         cur.execute("SELECT * FROM product_master WHERE barcode = %s", (product_id,))
         prod_data = cur.fetchone()
         
@@ -79,9 +81,10 @@ async def receive_scan(item: ScanItem):
         expiry_date = datetime.strptime(f"20{expiry_str}", "%Y%m%d")
         remaining_days = (expiry_date - datetime.now()).days
         
+        # 2. 修正欄位取值：改為無底線名稱，對應資料庫結構
         status_light = "綠燈"
-        if remaining_days <= prod_data['critical_days']: status_light = "紅燈"
-        elif remaining_days <= prod_data['warning_days']: status_light = "黃燈"
+        if remaining_days <= prod_data['criticaldays']: status_light = "紅燈"
+        elif remaining_days <= prod_data['warningdays']: status_light = "黃燈"
 
         cur.execute("""
             INSERT INTO inventory_log (product_id, barcode, status, remaining_days, action_time)
@@ -92,6 +95,7 @@ async def receive_scan(item: ScanItem):
         cur.close()
         conn.close()
         
-        return {"message": "成功", "data": {"品名": prod_data['product_name'], "狀態": status_light}}
+        # 3. 修正品名取值：productname
+        return {"message": "成功", "data": {"品名": prod_data['productname'], "狀態": status_light}}
     except Exception as e:
         return {"error": str(e)}
