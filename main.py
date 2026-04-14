@@ -90,12 +90,25 @@ async def receive_scan(item: ScanItem):
         expiry_date = datetime.strptime(f"20{expiry_str}", "%Y%m%d")
         remaining_days = (expiry_date - datetime.now()).days
         
-        # 3. 修正欄位取值：對應資料庫全小寫、無底線名稱
+        # 使用 .get() 並嘗試不同的大小寫組合，確保萬無一失
+        c_days = prod_data.get('criticaldays') or prod_data.get('CRITICALDAYS') or 0
+        w_days = prod_data.get('warningdays') or prod_data.get('WARNINGDAYS') or 0
+        p_name = prod_data.get('productname') or prod_data.get('PRODUCTNAME') or "未知商品"
+
         status_light = "綠燈"
-        if remaining_days <= prod_data['criticaldays']: 
+        if remaining_days <= int(c_days): 
             status_light = "紅燈"
-        elif remaining_days <= prod_data['warningdays']: 
+        elif remaining_days <= int(w_days): 
             status_light = "黃燈"
+            
+        # 下方的 Return 也請同步修改
+        return {
+            "message": "查詢成功", 
+            "data": {
+                "品名": p_name, 
+                "狀態": status_light
+            }
+        }
 
         # 寫入日誌 (請確保 inventory_log 表欄位名稱也對應正確)
         cur.execute("""
