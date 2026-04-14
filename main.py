@@ -8,10 +8,11 @@ from datetime import datetime
 
 app = FastAPI()
 
-# 資料庫連結
+# 1. 自動修正後的資料庫網址（包含 SSL 協議）
 DATABASE_URL = "postgresql://admin:z4b7Wc7ydu1AilkOkjFkLEJKJH6HNfQP@dpg-d7abkoua2pns73abkgn0-a.singapore-postgres.render.com/warehouse_db_jygk?sslmode=require"
 
 def get_db_connection():
+    # 確保連線時強制要求 SSL
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 class ScanItem(BaseModel):
@@ -46,7 +47,11 @@ async def scan_page():
                                 resDiv.style.color = "red";
                                 resDiv.innerText = "❌ 錯誤：" + data.error;
                             } else {
-                                resDiv.style.color = "green";
+                                let lightColor = "green";
+                                if(data.data.狀態 === "紅燈") lightColor = "red";
+                                if(data.data.狀態 === "黃燈") lightColor = "orange";
+                                
+                                resDiv.style.color = lightColor;
                                 resDiv.innerText = "✅ 成功：" + data.data.品名 + " (" + data.data.狀態 + ")";
                             }
                             input.value = '';
@@ -63,39 +68,53 @@ async def receive_scan(item: ScanItem):
     raw_bc = item.barcode
     product_id = "未知"
     expiry_str = ""
-    if len(raw_bc) >= 14 and raw_bc.startswith("01"):
-        product_id = raw_bc[2:6]
-        expiry_str = raw_bc[8:14]
     
+    # GS1-128 條碼解析邏輯
+    if len(raw_bc) >= 14 and raw_bc.startswith("01"):
+        product_id = raw_bc[2:6]   # 取得 A101
+        expiry_str = raw_bc[8:14]  # 取得 240817
+    
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. 修正 SQL 語法：barcode 拼字要正確
+        # 2. 修正 SQL 語法：確保欄位名稱為 barcode (無拼錯)
         cur.execute("SELECT * FROM product_master WHERE barcode = %s", (product_id,))
         prod_data = cur.fetchone()
         
         if not prod_data:
-            return {"error": f"資料庫查無品號: {product_id}"}
+            return {"error": f"資料庫查無此品號: {product_id}"}
 
+        # 到期日計算
         expiry_date = datetime.strptime(f"20{expiry_str}", "%Y%m%d")
         remaining_days = (expiry_date - datetime.now()).days
         
-        # 2. 修正欄位取值：改為無底線名稱，對應資料庫結構
+        # 3. 修正欄位取值：對應資料庫全小寫、無底線名稱
         status_light = "綠燈"
-        if remaining_days <= prod_data['criticaldays']: status_light = "紅燈"
-        elif remaining_days <= prod_data['warningdays']: status_light = "黃燈"
+        if remaining_days <= prod_data['criticaldays']: 
+            status_light = "紅燈"
+        elif remaining_days <= prod_data['warningdays']: 
+            status_light = "黃燈"
 
+        # 寫入日誌 (請確保 inventory_log 表欄位名稱也對應正確)
         cur.execute("""
-            INSERT INTO inventory_log (product_id, barcode, status, remaining_days, action_time)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (product_id, raw_bc, status_light, remaining_days, datetime.now()))
+            INSERT INTO inventory_logs (barcode, status, remaining_days, action_time)
+            VALUES (%s, %s, %s, %s)
+        """, (product_id, status_light, remaining_days, datetime.now()))
         
         conn.commit()
         cur.close()
         conn.close()
         
-        # 3. 修正品名取值：productname
-        return {"message": "成功", "data": {"品名": prod_data['productname'], "狀態": status_light}}
+        # 4. 修正品名取值：productname
+        return {
+            "message": "查詢成功", 
+            "data": {
+                "品名": prod_data['productname'], 
+                "狀態": status_light
+            }
+        }
     except Exception as e:
-        return {"error": str(e)}
+        if conn: conn.close()
+        return {"error": f"系統異常: {str(e)}"}
